@@ -1,8 +1,9 @@
 import { StorageService } from '../services/storage.js';
-import './taskmodal.js';    // Formulario de creacion/edicion
-import './importmodal.js';  // Importacion desde la API
-import './categorymodal.js'
-// Evita inyeccion de HTML al pintar textos del usuario o de la API
+import './taskmodal.js';    // Formulario de creación/edición
+import './importmodal.js';  // Importación desde la API
+import './categorymodal.js'; // Gestión de categorías
+
+// Evita inyección de HTML al pintar textos del usuario o de la API
 const escapeHTML = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -17,6 +18,7 @@ class TaskApp extends HTMLElement {
         this.tasks = StorageService.getTasks();
         this.categories = StorageService.getCategories();
         this.filterStatus = 'all';
+        this.filterCategory = 'all';  // Filtro por categoría
         this.searchQuery = '';
         this._ready = false;
         this._toastTimer = null;
@@ -29,7 +31,7 @@ class TaskApp extends HTMLElement {
         this.setupEventListeners();
     }
 
-    // Filtrado y busqueda en tiempo real (busca en titulo y descripcion)
+    // Filtrado y búsqueda en tiempo real (busca en título, descripción y categoría)
     get filteredTasks() {
         const q = this.searchQuery.trim().toLowerCase();
         return this.tasks.filter((task) => {
@@ -38,7 +40,11 @@ class TaskApp extends HTMLElement {
             const matchesSearch = inTitle || inDesc;
             const matchesFilter = this.filterStatus === 'all' ? true
                 : this.filterStatus === 'completed' ? task.completed : !task.completed;
-            return matchesSearch && matchesFilter;
+            const matchesCategory = this.filterCategory === 'all' ? true
+                : this.filterCategory === 'none'
+                    ? !task.categoryId
+                    : String(task.categoryId) === this.filterCategory;
+            return matchesSearch && matchesFilter && matchesCategory;
         });
     }
 
@@ -52,6 +58,11 @@ class TaskApp extends HTMLElement {
 
         root.getElementById('filter').addEventListener('change', (e) => {
             this.filterStatus = e.target.value;
+            this.updateListUI();
+        });
+
+        root.getElementById('filter-category').addEventListener('change', (e) => {
+            this.filterCategory = e.target.value;
             this.updateListUI();
         });
 
@@ -85,8 +96,9 @@ class TaskApp extends HTMLElement {
 
         root.getElementById('btn-import').addEventListener('click', () => this.openImportModalView());
         root.getElementById('btn-create').addEventListener('click', () => this.openFormModalView());
-        root.getElementById('btn-categories').addEventListener('click', ()=>this.opencategorymoadalview());
-        // Delegacion de eventos para checkbox, editar y eliminar
+        root.getElementById('btn-categories').addEventListener('click', () => this.openCategoryModalView());
+
+        // Delegación de eventos para checkbox, editar y eliminar
         root.getElementById('list-container').addEventListener('click', async (e) => {
             const el = e.target.closest('[data-id]');
             if (!el) return;
@@ -144,24 +156,33 @@ class TaskApp extends HTMLElement {
             }
         });
     }
-    opencategorymodalview() {
+
+    openCategoryModalView() {
         let catElement = this.shadowRoot.querySelector('category-modal');
         if (!catElement) {
-            catElement =document.createElement('category-modal');
+            catElement = document.createElement('category-modal');
             this.shadowRoot.appendChild(catElement);
         }
-        catElement.open(this.categories, (updatedcategories, deletedcategoryid) => {
-            this.categories = updatedcategories;
-            if (deletedcategoryid) {
-                this.task = this.task.map((t) =>
-                    String(t.categoryid) === String(deletedcategoryid) ? { ...t,categoryid: null} : t
-            );
-            StorageService.saveTasks(this.task);
-            this.updateListUI();
-    }});  
-               
-    }
+        catElement.open(this.categories, (updatedCategories, deletedCategoryId) => {
+            this.categories = updatedCategories;
+            StorageService.saveCategories(this.categories);
 
+            // Si se eliminó una categoría, desasignarla de las tareas que la tenían
+            if (deletedCategoryId) {
+                // Si el filtro activo era esa categoría, resetearlo
+                if (this.filterCategory === deletedCategoryId) {
+                    this.filterCategory = 'all';
+                }
+                this.tasks = this.tasks.map((t) =>
+                    String(t.categoryId) === String(deletedCategoryId)
+                        ? { ...t, categoryId: null }
+                        : t
+                );
+                StorageService.saveTasks(this.tasks);
+            }
+            this.updateListUI();
+        });
+    }
 
     // Guarda en localStorage y redibuja
     saveAndRefresh() {
@@ -182,7 +203,7 @@ class TaskApp extends HTMLElement {
         }, TOAST_MS);
     }
 
-    // ===== Confirmacion propia =====
+    // ===== Confirmación propia =====
     confirmAction({ title, message, acceptLabel }) {
         const root = this.shadowRoot;
         const modal = root.getElementById('confirm-modal');
@@ -226,6 +247,26 @@ class TaskApp extends HTMLElement {
         this.shadowRoot.querySelectorAll('.panel, #list-container').forEach((el) => { el.inert = value; });
     }
 
+    // Reconstruye las opciones del select de categorías conservando la selección actual
+    updateCategoryFilterUI() {
+        const select = this.shadowRoot.getElementById('filter-category');
+        if (!select) return;
+        const current = select.value; // Preservar selección
+        select.innerHTML =
+            '<option value="all">Todas las categorías</option>' +
+            '<option value="none">Sin categoría</option>' +
+            this.categories
+                .map((cat) => `<option value="${escapeHTML(cat.id)}">${escapeHTML(cat.name)}</option>`)
+                .join('');
+        // Restaurar valor previo si aún existe; si no, resetear filtro
+        if ([...select.options].some((o) => o.value === current)) {
+            select.value = current;
+        } else {
+            select.value = 'all';
+            this.filterCategory = 'all';
+        }
+    }
+
     updateSummary() {
         const total = this.tasks.length;
         const done = this.tasks.filter((t) => t.completed).length;
@@ -235,6 +276,7 @@ class TaskApp extends HTMLElement {
 
     updateListUI() {
         this.updateSummary();
+        this.updateCategoryFilterUI(); // Mantiene el select de categorías sincronizado
         const container = this.shadowRoot.getElementById('list-container');
         const list = this.filteredTasks;
 
@@ -250,8 +292,11 @@ class TaskApp extends HTMLElement {
             const title = escapeHTML(task.title);
             const description = task.description ? escapeHTML(task.description) : '';
             const id = escapeHTML(task.id);
-            const categoryObj = this.categories.find((C) => String(C.id)===String(task.categoryid));
+
+            // Buscar la categoría asignada
+            const categoryObj = this.categories.find((c) => String(c.id) === String(task.categoryId));
             const categoryName = categoryObj ? escapeHTML(categoryObj.name) : '';
+
             return `
             <div class="task-card ${task.completed ? 'completed' : ''}">
                 <div class="task-left">
@@ -261,9 +306,9 @@ class TaskApp extends HTMLElement {
                     <div class="task-data">
                         <p class="task-title">${title}</p>
                         ${description ? `<p class="task-desc">${description}</p>` : ''}
-                        ${categoryName ? <span class= "tag tag-local">📋 ${categoryName}</span> : ''}
+                        ${categoryName ? `<span class="tag tag-category">📋 ${categoryName}</span>` : ''}
                         <small class="task-date">Registrada: ${escapeHTML(task.date || 'Sin fecha')}</small>
-                        <span class="tag ${api ? 'tag-api' : 'tag-local'}">${api ? '(Tarea Importada No Modificable)' : 'Tarea Creada'}</span>
+                        <span class="tag ${api ? 'tag-api' : 'tag-local'}">${api ? '(Importada)' : 'Creada'}</span>
                     </div>
                 </div>
                 <div class="task-actions">
@@ -289,13 +334,20 @@ class TaskApp extends HTMLElement {
                         <option value="pending">Pendientes</option>
                         <option value="completed">Completadas</option>
                     </select>
+                    <select id="filter-category" aria-label="Filtrar por categoría">
+                        <option value="all">🏷️ Todas las categorías</option>
+                        <option value="none">Sin categoría</option>
+                        ${this.categories.map((cat) =>
+            `<option value="${escapeHTML(cat.id)}">${escapeHTML(cat.name)}</option>`
+        ).join('')}
+                    </select>
                 </div>
                 <div class="btn-group">
                     <button id="btn-create">➕ Crear Tarea</button>
                     <button id="btn-import" class="btn-import">📥 Importar Tareas</button>
+                    <button id="btn-categories" class="btn-categories">🏷️ Categorías</button>
                     <button id="btn-complete-all" class="btn-complete">✔️ Marcar Terminadas</button>
                     <button id="btn-clear" class="btn-danger">🗑️ Vaciar Lista</button>
-                    <button id="btn-categories">📋categorias</button>
                 </div>
             </div>
 
