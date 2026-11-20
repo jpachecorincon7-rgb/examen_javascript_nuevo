@@ -71,6 +71,7 @@ task-app {
     display: flex;
     gap: 10px;
     margin-bottom: 16px;
+    flex-wrap: wrap;
 }
 
 .panel input[type="search"],
@@ -226,6 +227,10 @@ button:focus-visible {
     background-color: #9B79E8;
 }
 
+.tag-category {
+    background-color: #3A9E6F;
+}
+
 .task-actions {
     display: flex;
     gap: 6px;
@@ -253,8 +258,68 @@ button:focus-visible {
 }
 
 task-modal,
-import-modal {
+import-modal,
+category-modal {
     display: contents;
+}
+
+/* ===== Botón Categorías ===== */
+.btn-categories {
+    background-color: #3A9E6F;
+    border-color: #3A9E6F;
+}
+
+.btn-categories:hover:not(:disabled) {
+    background-color: #2E7D57;
+    border-color: #2E7D57;
+}
+
+/* ===== Select de categorías dentro de los modales ===== */
+.modal-contenido .select-categoria {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 18px;
+    border: 1px solid #F0E3EF;
+    border-radius: 7px;
+    background-color: #FFF7FC;
+    color: #30243B;
+    font-size: 14px;
+}
+
+/* ===== Lista de categorías en el modal de categorías ===== */
+.cat-list {
+    margin-top: 16px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.cat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background-color: #FFF7FC;
+    border: 1px solid #F0E3EF;
+    border-left: 4px solid #3A9E6F;
+    border-radius: 8px;
+}
+
+.cat-name-text {
+    font-weight: 600;
+    color: #30243B;
+    overflow-wrap: anywhere;
+    flex: 1;
+}
+
+/* ===== Descripción de tarea en la tarjeta ===== */
+.task-desc {
+    font-size: 13px;
+    color: #6B5B79;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
 }
 
 .modal {
