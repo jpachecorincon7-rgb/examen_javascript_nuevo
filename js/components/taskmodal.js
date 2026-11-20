@@ -1,5 +1,9 @@
 import { StorageService } from '../services/storage.js';
 
+// Evita inyección de HTML al pintar textos del usuario o de la API
+const escapeHTML = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 class TaskModal extends HTMLElement {
     constructor() {
         super();
@@ -10,7 +14,7 @@ class TaskModal extends HTMLElement {
         this._opener = null;
     }
 
-    // Se construye una sola vez (asi la hoja de estilos ya esta cargada cuando se abre)
+    // Se construye una sola vez (así la hoja de estilos ya está cargada cuando se abre)
     connectedCallback() {
         if (this._init) return;
         this._init = true;
@@ -29,13 +33,21 @@ class TaskModal extends HTMLElement {
 
         const root = this.shadowRoot;
         const editing = id ? this.tasks.find((t) => String(t.id) === String(id)) : null;
+
+        // Cargar categorias desde localStorage y poblar el <select>
         const categories = StorageService.getCategories();
-        const categoryselect = root.getElementById('category');
-        categoryselect.innerHTML =
-          '<option value="">sin categoria</option>' +
-          categories
-          .map((cat) => <option value="${this.escapeHTML(cat.id)}">${this.escapeHTML(cat.name)}</option>)
-          .join('');
+        const categorySelect = root.getElementById('category');
+        categorySelect.innerHTML =
+            '<option value="">— Sin categoria —</option>' +
+            categories
+                .map((cat) => `<option value="${escapeHTML(cat.id)}">${escapeHTML(cat.name)}</option>`)
+                .join('');
+
+        // Si es edicion y tiene categoria asignada, preseleccionarla
+        if (editing && editing.categoryId) {
+            categorySelect.value = editing.categoryId;
+        }
+
         root.getElementById('form-error').textContent = '';
         root.getElementById('modal-header-title').textContent = editing ? 'Editar tarea' : 'Nueva tarea';
         root.getElementById('btn-save').textContent = editing ? 'Guardar cambios' : 'Guardar tarea';
@@ -72,6 +84,7 @@ class TaskModal extends HTMLElement {
             const dateValue = root.getElementById('date').value || this.todayLocal();
             const completedValue = root.getElementById('completed').checked;
             const categoryValue = root.getElementById('category').value || null;
+
             if (!titleValue) {
                 errorBox.textContent = 'El título de la tarea es obligatorio.';
                 root.getElementById('title').focus();
@@ -82,18 +95,18 @@ class TaskModal extends HTMLElement {
                 // EDICION: arreglo nuevo con la tarea actualizada
                 this.tasks = this.tasks.map((task) =>
                     String(task.id) === String(this.taskId)
-                        ? { ...task, title: titleValue, description: descriptionValue, date: dateValue, completed: completedValue, categoryid: categoryValue}
+                        ? { ...task, title: titleValue, description: descriptionValue, date: dateValue, completed: completedValue, categoryId: categoryValue }
                         : task
                 );
             } else {
-                // CREACION: ID local propio (nunca empieza con "api-")
+                // CREACIÓN: ID local propio (nunca empieza con "api-")
                 const newTask = {
                     id: StorageService.generateId('local'),
                     title: titleValue,
                     description: descriptionValue,
                     date: dateValue,
                     completed: completedValue,
-                    categoryid: categoryValue
+                    categoryId: categoryValue
                 };
                 this.tasks = [newTask, ...this.tasks]; // La nueva queda arriba
             }
@@ -106,14 +119,14 @@ class TaskModal extends HTMLElement {
     hideModal() {
         this.shadowRoot.getElementById('modal').hidden = true;
         this.setBackgroundInert(false);
-        // Si el boton que abrio el modal ya no existe (la lista se redibujo), se enfoca "Crear Tarea"
+        // Si el botón que abrió el modal ya no existe (la lista se redibujó), se enfoca "Crear Tarea"
         const target = this._opener && this._opener.isConnected
             ? this._opener
             : this.getRootNode().getElementById('btn-create');
         if (target && target.focus) target.focus();
     }
 
-    // Mientras el modal esta abierto, el resto del panel no recibe foco ni clics
+    // Mientras el modal está abierto, el resto del panel no recibe foco ni clics
     setBackgroundInert(value) {
         const rootNode = this.getRootNode();
         if (rootNode.querySelectorAll) {
@@ -125,11 +138,7 @@ class TaskModal extends HTMLElement {
     todayLocal() {
         return new Date().toLocaleDateString('en-CA');
     }
-    escapeHTML(s) {
-        return String(s ?? ''). replac(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-    }
     renderStructure() {
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="css/styles.css">
@@ -146,10 +155,12 @@ class TaskModal extends HTMLElement {
                         <label for="description">Descripción (opcional)</label>
                         <input type="text" id="description" maxlength="200" autocomplete="off"
                             placeholder="Escribe detalles adicionales de la tarea...">
-                        <label for="category">categoria (opcional)</label>
-                        <select id="category">
-                          <option value="">sin categoria</option>
+
+                        <label for="category">Categoría (opcional)</label>
+                        <select id="category" class="select-categoria">
+                            <option value="">— Sin categoría —</option>
                         </select>
+
                         <label for="date">Fecha de registro</label>
                         <input type="date" id="date">
 
